@@ -116,7 +116,6 @@ printf "%s\n" "${DOMENY[@]}" | parallel --env KATALOG_BACKUPU --env NIEUDANE --e
             --mirror \
             --no-parent \
             --page-requisites \
-            --restrict-file-names=windows \
             --trust-server-names \
             "https://${domena}"
     } 2>&1 | tee "$LOGFILE"
