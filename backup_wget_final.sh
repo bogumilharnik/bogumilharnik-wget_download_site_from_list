@@ -1,13 +1,34 @@
 #!/bin/bash
 
-# Sprawdzanie czy podano plik z listą domen
-if [ -z "$1" ]; then
-    echo "❌ Musisz podać plik z listą domen jako pierwszy argument! - zalecany format: /katalog/nazwa pliku.txt"
-    echo "Przykład: $0 /home/user/domeny.txt"
+# Przyjmowanie parametrów
+PLIK_LISTA="$1"
+KATALOG_USER="$2"
+NAZWA_BACKUP="$3"
+
+# Sprawdzanie czy podano wszystkie wymagane parametry
+if [ -z "$PLIK_LISTA" ] || [ -z "$KATALOG_USER" ] || [ -z "$NAZWA_BACKUP" ]; then
+    echo "❌ Użycie: $0 [plik_lista_domen] [katalog_w_HOME] [nazwa_backupu]"
+    echo "Przykład: $0 domeny.txt Kopia_Stron Backup_test"
     exit 1
 fi
 
-LISTA_DOMEN="$1"
+# Sprawdzanie czy plik istnieje
+if [ ! -f "$PLIK_LISTA" ]; then
+    echo "❌ Podany plik '$PLIK_LISTA' nie istnieje!"
+    exit 1
+fi
+
+# Sprawdzanie poprawności zawartości pliku
+while IFS= read -r linia; do
+    [ -z "$linia" ] && continue
+    if [[ ! "$linia" =~ ^(https?://)?[a-zA-Z0-9.-]+\.[a-z]{2,}$ ]]; then
+        echo "❌ Nieprawidłowy wpis w pliku: '$linia'"
+        exit 1
+    fi
+done < "$PLIK_LISTA"
+
+# Bazowy katalog backupu w $HOME
+KATALOG_GLOWNY="$HOME/$KATALOG_USER"
 
 # Sprawdzenie czy katalog główny istnieje
 if [ ! -d "$KATALOG_GLOWNY" ]; then
@@ -22,17 +43,13 @@ if [ ! -d "$KATALOG_GLOWNY" ]; then
     fi
 fi
 
-# Tworzenie katalogu backupu na dzisiejszą datę
-mkdir -p "$KATALOG_BACKUPU"
-# Tworzenie katalogu backupu z dzisiejszą datą i godziną
+# Tworzenie katalogu backupu z datą
 DATA=$(date +%Y-%m-%d)
-KATALOG_BACKUPU="${KATALOG_GLOWNY}/Backup_${DATA}"
-
-# Tworzenie katalogu głównego backupu
+KATALOG_BACKUPU="${KATALOG_GLOWNY}/${NAZWA_BACKUP}_${DATA}"
 mkdir -p "$KATALOG_BACKUPU"
 
 # Maksymalna liczba równoległych pobrań
-MAX_PROCESSES=1  # Zmniejszamy, żeby czytelnie widzieć postępy na terminalu
+MAX_PROCESSES=1  # Mały, by widzieć postępy
 
 # Pliki do zapisywania błędów i logów
 GLOBALNY_LOG="${KATALOG_BACKUPU}/backup_log.txt"
@@ -42,7 +59,7 @@ NIEUDANE="${KATALOG_BACKUPU}/nieudane_pobrania.txt"
 > "$GLOBALNY_LOG"
 > "$NIEUDANE"
 
-# Eksport zmiennych, aby były dostępne dla parallel
+# Eksport zmiennych dla parallel
 export KATALOG_BACKUPU
 export KATALOG_GLOWNY
 export GLOBALNY_LOG
@@ -67,7 +84,7 @@ while IFS= read -r linia; do
     [ -z "$linia" ] && continue
     domena=$(oczysc_domena "$linia")
     DOMENY+=("$domena")
-done < "$LISTA_DOMEN"
+done < "$PLIK_LISTA"
 
 # Pobieranie stron równolegle
 printf "%s\n" "${DOMENY[@]}" | parallel --env KATALOG_BACKUPU --env NIEUDANE --env GLOBALNY_LOG --env KATALOG_GLOWNY -j "$MAX_PROCESSES" --colsep ' ' '
@@ -91,7 +108,7 @@ printf "%s\n" "${DOMENY[@]}" | parallel --env KATALOG_BACKUPU --env NIEUDANE --e
         wget \
             --continue \
             --progress=bar \
-			--no-clobber \
+            --no-clobber \
             --show-progress \
             --timeout=30 \
             --directory-prefix="$FOLDER_STRONY" \
@@ -109,17 +126,17 @@ printf "%s\n" "${DOMENY[@]}" | parallel --env KATALOG_BACKUPU --env NIEUDANE --e
 
     if [ "$WGET_EXIT_CODE" -eq 0 ]; then
         echo "✅ Sukces: $domena" | tee -a "$GLOBALNY_LOG"
-    else  
+    else
         echo "❌ Błąd: $domena" | tee -a "$GLOBALNY_LOG"
         echo "$domena" >> "$NIEUDANE"
     fi
 '
 
-# Tworzenie archiwum z pobranych stron
+# Tworzenie archiwum tar.gz
 echo "--------------------------------------------------" | tee -a "$GLOBALNY_LOG"
 echo "Tworzenie archiwum tar.gz..." | tee -a "$GLOBALNY_LOG"
 cd "$KATALOG_GLOWNY" || exit 1
-TAR_FILE="Backup_${DATA}_$(date +%H%M%S).tar.gz"
+TAR_FILE="${NAZWA_BACKUP}_${DATA}_$(date +%H%M%S).tar.gz"
 tar -czf "$TAR_FILE" "$(basename "$KATALOG_BACKUPU")"
 
 echo "📦 Utworzono archiwum: $PWD/$TAR_FILE" | tee -a "$GLOBALNY_LOG"
