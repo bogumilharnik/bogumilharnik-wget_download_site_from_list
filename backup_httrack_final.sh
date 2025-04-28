@@ -118,7 +118,7 @@ printf "%s\n" "${DOMENY[@]}" | parallel --env KATALOG_BACKUPU --env NIEUDANE --e
             -c8 \
             --connection-per-second=5 \
             --retries=2 \
-            -K \
+            -k \
             -N1 \
             -z \
             -s0
