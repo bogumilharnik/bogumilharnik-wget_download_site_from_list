@@ -121,7 +121,8 @@ printf "%s\n" "${DOMENY[@]}" | parallel --env KATALOG_BACKUPU --env NIEUDANE --e
             -K \
             -N1 \
             -sN \
-            -z
+            -z \
+            --disable-robot-rules \
     } 2>&1 | tee "$LOGFILE"
 
     HTTRACK_EXIT_CODE=${PIPESTATUS[0]}
