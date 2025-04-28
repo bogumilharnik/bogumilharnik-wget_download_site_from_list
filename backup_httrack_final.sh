@@ -8,7 +8,7 @@ NAZWA_BACKUP="$3"
 # Sprawdzanie czy podano wszystkie wymagane parametry
 if [ -z "$PLIK_LISTA" ] || [ -z "$KATALOG_USER" ] || [ -z "$NAZWA_BACKUP" ]; then
     echo "❌ Użycie: $0 [plik_lista_domen] [katalog_w_HOME] [nazwa_backupu]"
-    echo "Przykład: $0 domeny.txt Kopia_Stron Backup_test"
+    echo "Przykład: $0 lista.txt Kopia_Stron Backup"
     exit 1
 fi
 
