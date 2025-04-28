@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Przyjmowanie parametrów
+# Przyjmowanie parametrów - plik z domenami, katalog w HOME, nazwa backupu
 PLIK_LISTA="$1"
 KATALOG_USER="$2"
 NAZWA_BACKUP="$3"
