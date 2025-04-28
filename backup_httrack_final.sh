@@ -110,18 +110,19 @@ printf "%s\n" "${DOMENY[@]}" | parallel --env KATALOG_BACKUPU --env NIEUDANE --e
             --mirror \
             -L1 \
             --stay-on-same-domain "$domena" \
-            --timeout=10 \
+            --timeout=5 \
+            --retries=1 \
             -vv \
             -w \
             -f0 \
             -r9999 \
-            -c8 \
-            --connection-per-second=5 \
-            --retries=2 \
-            -k \
+            -c16 \
+            --connection-per-second=10 \
+            --disable-security-limits \
+            -K \
             -N1 \
-            -z \
-            -s0
+            -s0 \
+            -z
     } 2>&1 | tee "$LOGFILE"
 
     HTTRACK_EXIT_CODE=${PIPESTATUS[0]}
