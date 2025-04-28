@@ -107,7 +107,6 @@ printf "%s\n" "${DOMENY[@]}" | parallel --env KATALOG_BACKUPU --env NIEUDANE --e
     {
         wget \
             --continue \
-            --progress=bar \
             --no-clobber \
             --show-progress \
             --timeout=30 \
