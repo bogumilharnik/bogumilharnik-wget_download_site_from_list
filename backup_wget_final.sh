@@ -1,10 +1,10 @@
 #!/bin/bash
 
-# Plik z listą domen (jedna domena na linię)
+# Plik z listą domen (jedna domena na linię, np. api.urk.edu.pl)
 PLIK_LISTA="domeny.txt"
 
 # Katalog bazowy w $HOME
-KATALOG_GLOWNY="$HOME/Kopia_Stron_WGET"
+KATALOG_GLOWNY="$HOME/Kopia_Stron"
 
 # Nazwa backupu z datą
 DATA=$(date +%Y-%m-%d)
@@ -18,7 +18,7 @@ NIEUDANE="${KATALOG_BACKUPU}/nieudane_pobrania.txt"
 > "$NIEUDANE"
 
 # Parametry pobierania
-MAX_PROCESSES=4  # liczba równoległych procesów
+MAX_PROCESSES=4
 
 # Eksport zmiennych do parallel
 export KATALOG_BACKUPU GLOBALNY_LOG NIEUDANE
@@ -56,24 +56,35 @@ printf "%s\n" "${DOMENY[@]}" | parallel --env KATALOG_BACKUPU --env GLOBALNY_LOG
     echo "--------------------------------------------------" | tee -a "$GLOBALNY_LOG"
 
     FOLDER="Strona_${domena//./_}"
-    KATALOG="${KATALOG_BACKUPU}/${FOLDER}"
-    LOG="${KATALOG}.log"
-    mkdir -p "$KATALOG"
+	KATALOG="${KATALOG_BACKUPU}/${FOLDER}"
+	LOG="${KATALOG}.log"
+	mkdir -p "$KATALOG"
 
-    {
-        wget \
-            --mirror \
-            --convert-links \
-            --adjust-extension \
-            --page-requisites \
-            --no-parent \
-            --timeout=5 \
-            --tries=2 \
-            --wait=0.5 \
-            --limit-rate=2m \
-            --directory-prefix="$KATALOG" \
-            "https://${domena}"
-    } 2>&1 | tee "$LOG"
+	# Poprawne wyciąganie głównej domeny
+	if [[ -n "$domena" ]]; then
+		ROOT_DOMENA=$(echo "$domena" | awk -F. '{if (NF>1) print $(NF-1)"."$NF; else print $0}')
+	else
+		ROOT_DOMENA="$domena"
+	fi
+
+	# Pobieranie z automatycznym --domains
+	{
+		wget \
+		    --mirror \
+		    --convert-links \
+		    --adjust-extension \
+		    --page-requisites \
+		    --no-parent \
+		    --span-hosts \
+		    --domains="$domena,$ROOT_DOMENA" \
+		    --no-check-certificate \
+		    --timeout=10 \
+		    --tries=2 \
+		    --wait=0.5 \
+		    --limit-rate=3m \
+		    --directory-prefix="$KATALOG" \
+		    "https://${domena}"
+	} 2>&1 | tee "$LOG"
 
     EXIT_CODE=${PIPESTATUS[0]}
 
