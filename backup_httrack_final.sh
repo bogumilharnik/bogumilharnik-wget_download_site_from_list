@@ -116,7 +116,7 @@ printf "%s\n" "${DOMENY[@]}" | parallel --env KATALOG_BACKUPU --env NIEUDANE --e
             -w \
             -f0 \
             -r9999 \
-            -c16 \
+            -c32 \
             --connection-per-second=10 \
             --disable-security-limits \
             -k \
