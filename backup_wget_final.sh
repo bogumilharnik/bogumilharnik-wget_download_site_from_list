@@ -1,14 +1,26 @@
 #!/bin/bash
 
 # Plik z listą domen (jedna domena na linię, np. api.urk.edu.pl)
-PLIK_LISTA="domeny.txt"
+PLIK_LISTA="$1"
+KATALOG_USER="$2"
+NAZWA_BACKUP="$3"
 
-# Katalog bazowy w $HOME
-KATALOG_GLOWNY="$HOME/Kopia_Stron"
+# Sprawdzenie czy podano wszystkie wymagane parametry
+if [ -z "$PLIK_LISTA" ] || [ -z "$KATALOG_USER" ] || [ -z "$NAZWA_BACKUP" ]; then
+    echo "❌ Użycie: $0 [plik_lista_domen] [katalog_w_HOME] [nazwa_backupu]"
+    echo "Przykład: $0 domeny.txt Kopia_Stron Backup_test"
+    exit 1
+fi
 
-# Nazwa backupu z datą
+# Bazowy katalog backupu w $HOME
+KATALOG_GLOWNY="$HOME/$KATALOG_USER"
+
+# Tworzenie katalogu jeśli nie istnieje
+mkdir -p "$KATALOG_GLOWNY"
+
+# Tworzenie katalogu backupu z datą
 DATA=$(date +%Y-%m-%d)
-KATALOG_BACKUPU="${KATALOG_GLOWNY}/Backup_${DATA}"
+KATALOG_BACKUPU="${KATALOG_GLOWNY}/${NAZWA_BACKUP}_${DATA}"
 mkdir -p "$KATALOG_BACKUPU"
 
 # Logi
@@ -20,87 +32,73 @@ NIEUDANE="${KATALOG_BACKUPU}/nieudane_pobrania.txt"
 # Parametry pobierania
 MAX_PROCESSES=4
 
-# Eksport zmiennych do parallel
-export KATALOG_BACKUPU GLOBALNY_LOG NIEUDANE
-
 # Sprawdzanie wymaganych narzędzi
 command -v wget >/dev/null 2>&1 || { echo "❌ wget nie jest zainstalowany."; exit 1; }
 command -v parallel >/dev/null 2>&1 || { echo "❌ parallel nie jest zainstalowany."; exit 1; }
 
-# Czyszczenie domen
-oczysc_domena() {
-    local domena="$1"
-    domena="${domena#https://}"
-    domena="${domena#http://}"
-    domena="${domena%/}"
-    echo "$domena"
-}
-
-# Czytanie listy
+# Czytanie listy i oczyszczanie domen
 DOMENY=()
 while IFS= read -r linia; do
     [ -z "$linia" ] && continue
-    DOMENY+=("$(oczysc_domena "$linia")")
+    domena="${linia#https://}"
+    domena="${domena#http://}"
+    domena="${domena%/}"
+    DOMENY+=("$domena")
 done < "$PLIK_LISTA"
 
 # Pobieranie
-printf "%s\n" "${DOMENY[@]}" | parallel --env KATALOG_BACKUPU --env GLOBALNY_LOG --env NIEUDANE -j "$MAX_PROCESSES" '
-    domena={};
+printf "%s\n" "${DOMENY[@]}" | parallel -j "$MAX_PROCESSES" bash -c '
+    domena="$1"; shift
+
     if [[ -z "$domena" || ! "$domena" =~ ^[a-zA-Z0-9.-]+$ ]]; then
-        echo "⚠️ Pominięto: '$domena'" | tee -a "$GLOBALNY_LOG"
+        echo "⚠️ Pominięto: $domena" | tee -a "'"$GLOBALNY_LOG"'"
         exit 0
     fi
 
-    echo "--------------------------------------------------" | tee -a "$GLOBALNY_LOG"
-    echo "Pobieranie: $domena" | tee -a "$GLOBALNY_LOG"
-    echo "--------------------------------------------------" | tee -a "$GLOBALNY_LOG"
+    echo "--------------------------------------------------" | tee -a "'"$GLOBALNY_LOG"'"
+    echo "Pobieranie: $domena" | tee -a "'"$GLOBALNY_LOG"'"
+    echo "--------------------------------------------------" | tee -a "'"$GLOBALNY_LOG"'"
 
     FOLDER="Strona_${domena//./_}"
-	KATALOG="${KATALOG_BACKUPU}/${FOLDER}"
-	LOG="${KATALOG}.log"
-	mkdir -p "$KATALOG"
+    KATALOG="'"$KATALOG_BACKUPU"'/${FOLDER}"
+    LOG="${KATALOG}.log"
+    mkdir -p "$KATALOG"
 
-	# Poprawne wyciąganie głównej domeny
-	if [[ -n "$domena" ]]; then
-		ROOT_DOMENA=$(echo "$domena" | awk -F. '{if (NF>1) printf "%s.%s", $(NF-1), $NF; else print $0}')
-	else
-		ROOT_DOMENA="$domena"
-	fi
+    ROOT_DOMENA=$(echo "$domena" | awk -F. '\''{if (NF>1) printf "%s.%s", $(NF-1), $NF; else print $0}'\'')
 
-	# Pobieranie z automatycznym --domains
-	{
-		wget \
-		    --mirror \
-		    --convert-links \
-		    --adjust-extension \
-		    --page-requisites \
-		    --no-parent \
-		    --span-hosts \
-		    --domains="$domena,$ROOT_DOMENA" \
-		    --no-check-certificate \
-		    --timeout=10 \
-		    --tries=2 \
-		    --wait=0.5 \
-		    --limit-rate=3m \
-		    --directory-prefix="$KATALOG" \
-		    "https://${domena}"
-	} 2>&1 | tee "$LOG"
+    {
+        wget \
+            --mirror \
+            --convert-links \
+            --adjust-extension \
+            --page-requisites \
+            --no-parent \
+            --span-hosts \
+            --domains="$domena,$ROOT_DOMENA" \
+            --no-check-certificate \
+            --timeout=10 \
+            --tries=2 \
+            --wait=0.5 \
+            --limit-rate=3m \
+            --directory-prefix="$KATALOG" \
+            "https://${domena}"
+    } 2>&1 | tee "$LOG"
 
     EXIT_CODE=${PIPESTATUS[0]}
 
     if [ "$EXIT_CODE" -eq 0 ]; then
-        echo "✅ OK: $domena" | tee -a "$GLOBALNY_LOG"
+        echo "✅ OK: $domena" | tee -a "'"$GLOBALNY_LOG"'"
     else
-        echo "❌ Błąd: $domena" | tee -a "$GLOBALNY_LOG"
-        echo "$domena" >> "$NIEUDANE"
+        echo "❌ Błąd: $domena" | tee -a "'"$GLOBALNY_LOG"'"
+        echo "$domena" >> "'"$NIEUDANE"'"
     fi
-'
+' _ {}
 
 # Tworzenie archiwum
 echo "--------------------------------------------------" | tee -a "$GLOBALNY_LOG"
 echo "Tworzenie archiwum..." | tee -a "$GLOBALNY_LOG"
 cd "$KATALOG_GLOWNY" || exit 1
-TAR_FILE="Backup_${DATA}_$(date +%H%M%S).tar.gz"
+TAR_FILE="${NAZWA_BACKUP}_${DATA}_$(date +%H%M%S).tar.gz"
 tar -czf "$TAR_FILE" "$(basename "$KATALOG_BACKUPU")"
 echo "📦 Utworzono: $PWD/$TAR_FILE" | tee -a "$GLOBALNY_LOG"
 
