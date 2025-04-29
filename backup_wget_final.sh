@@ -1,24 +1,25 @@
 #!/bin/bash
 
-# Plik z listą domen (jedna domena na linię, np. api.urk.edu.pl)
+# Przyjmowanie parametrów
 PLIK_LISTA="$1"
 KATALOG_USER="$2"
 NAZWA_BACKUP="$3"
 
-# Sprawdzenie czy podano wszystkie wymagane parametry
+# Sprawdzenie parametrów
 if [ -z "$PLIK_LISTA" ] || [ -z "$KATALOG_USER" ] || [ -z "$NAZWA_BACKUP" ]; then
     echo "❌ Użycie: $0 [plik_lista_domen] [katalog_w_HOME] [nazwa_backupu]"
     echo "Przykład: $0 domeny.txt Kopia_Stron Backup_test"
     exit 1
 fi
 
-# Bazowy katalog backupu w $HOME
+# Rozwijanie tyldy (~) w ścieżkach
+PLIK_LISTA=$(eval echo "$PLIK_LISTA")
+
+# Bazowy katalog backupu
 KATALOG_GLOWNY="$HOME/$KATALOG_USER"
 
-# Tworzenie katalogu jeśli nie istnieje
+# Tworzenie katalogu backupu
 mkdir -p "$KATALOG_GLOWNY"
-
-# Tworzenie katalogu backupu z datą
 DATA=$(date +%Y-%m-%d)
 KATALOG_BACKUPU="${KATALOG_GLOWNY}/${NAZWA_BACKUP}_${DATA}"
 mkdir -p "$KATALOG_BACKUPU"
@@ -29,29 +30,16 @@ NIEUDANE="${KATALOG_BACKUPU}/nieudane_pobrania.txt"
 > "$GLOBALNY_LOG"
 > "$NIEUDANE"
 
-# Parametry pobierania
-MAX_PROCESSES=4
-
 # Sprawdzanie wymaganych narzędzi
 command -v wget >/dev/null 2>&1 || { echo "❌ wget nie jest zainstalowany."; exit 1; }
 command -v parallel >/dev/null 2>&1 || { echo "❌ parallel nie jest zainstalowany."; exit 1; }
 
-# Czytanie listy i oczyszczanie domen
-DOMENY=()
-while IFS= read -r linia; do
-    [ -z "$linia" ] && continue
-    domena="${linia#https://}"
-    domena="${domena#http://}"
-    domena="${domena%/}"
-    DOMENY+=("$domena")
-done < "$PLIK_LISTA"
-
 # Pobieranie
-printf "%s\n" "${DOMENY[@]}" | parallel -j "$MAX_PROCESSES" bash -c '
+grep -v '^\s*$' "$PLIK_LISTA" | sed 's|https\?://||; s|/$||' | parallel -j 4 bash -c '
     domena="$1"; shift
 
-    if [[ -z "$domena" || ! "$domena" =~ ^[a-zA-Z0-9.-]+$ ]]; then
-        echo "⚠️ Pominięto: $domena" | tee -a "'"$GLOBALNY_LOG"'"
+    if [[ -z "$domena" ]]; then
+        echo "⚠️ Pominięto pusty wpis." | tee -a "'"$GLOBALNY_LOG"'"
         exit 0
     fi
 
