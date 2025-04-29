@@ -1,75 +1,33 @@
 #!/bin/bash
 
-# Przyjmowanie parametrów - plik z domenami, katalog w HOME, nazwa backupu
-PLIK_LISTA="$1"
-KATALOG_USER="$2"
-NAZWA_BACKUP="$3"
+# Plik z listą domen (jedna domena na linię)
+PLIK_LISTA="domeny.txt"
 
-# Sprawdzanie czy podano wszystkie wymagane parametry
-if [ -z "$PLIK_LISTA" ] || [ -z "$KATALOG_USER" ] || [ -z "$NAZWA_BACKUP" ]; then
-    echo "❌ Użycie: $0 [plik_lista_domen] [katalog_w_HOME] [nazwa_backupu]"
-    echo "Przykład: $0 domeny.txt Kopia_Stron Backup_test"
-    exit 1
-fi
+# Katalog bazowy w $HOME
+KATALOG_GLOWNY="$HOME/Kopia_Stron_WGET"
 
-# Sprawdzanie czy plik istnieje
-if [ ! -f "$PLIK_LISTA" ]; then
-    echo "❌ Podany plik '$PLIK_LISTA' nie istnieje!"
-    exit 1
-fi
-
-# Sprawdzanie poprawności zawartości pliku
-while IFS= read -r linia; do
-    [ -z "$linia" ] && continue
-    if [[ ! "$linia" =~ ^(https?://)?[a-zA-Z0-9.-]+\.[a-z]{2,}$ ]]; then
-        echo "❌ Nieprawidłowy wpis w pliku: '$linia'"
-        exit 1
-    fi
-done < "$PLIK_LISTA"
-
-# Bazowy katalog backupu w $HOME
-KATALOG_GLOWNY="$HOME/$KATALOG_USER"
-
-# Sprawdzenie czy katalog główny istnieje
-if [ ! -d "$KATALOG_GLOWNY" ]; then
-    echo "❗ Katalog $KATALOG_GLOWNY nie istnieje."
-    read -p "Czy chcesz go utworzyć? (t/n): " decyzja
-    if [[ "$decyzja" =~ ^[Tt]$ ]]; then
-        mkdir -p "$KATALOG_GLOWNY"
-        echo "✅ Utworzono katalog $KATALOG_GLOWNY."
-    else
-        echo "❌ Przerwano działanie skryptu."
-        exit 1
-    fi
-fi
-
-# Tworzenie katalogu backupu z datą
+# Nazwa backupu z datą
 DATA=$(date +%Y-%m-%d)
-KATALOG_BACKUPU="${KATALOG_GLOWNY}/${NAZWA_BACKUP}_${DATA}"
+KATALOG_BACKUPU="${KATALOG_GLOWNY}/Backup_${DATA}"
 mkdir -p "$KATALOG_BACKUPU"
 
-# Maksymalna liczba równoległych pobrań
-MAX_PROCESSES=1  # Mały, by widzieć postępy
-
-# Pliki do zapisywania błędów i logów
+# Logi
 GLOBALNY_LOG="${KATALOG_BACKUPU}/backup_log.txt"
 NIEUDANE="${KATALOG_BACKUPU}/nieudane_pobrania.txt"
-
-# Czyścimy pliki
 > "$GLOBALNY_LOG"
 > "$NIEUDANE"
 
-# Eksport zmiennych dla parallel
-export KATALOG_BACKUPU
-export KATALOG_GLOWNY
-export GLOBALNY_LOG
-export NIEUDANE
+# Parametry pobierania
+MAX_PROCESSES=4  # liczba równoległych procesów
+
+# Eksport zmiennych do parallel
+export KATALOG_BACKUPU GLOBALNY_LOG NIEUDANE
 
 # Sprawdzanie wymaganych narzędzi
-command -v wget >/dev/null 2>&1 || { echo >&2 "❌ wget nie jest zainstalowany. Przerwano."; exit 1; }
-command -v parallel >/dev/null 2>&1 || { echo >&2 "❌ parallel nie jest zainstalowany. Proszę zainstaluj: sudo apt install parallel"; exit 1; }
+command -v wget >/dev/null 2>&1 || { echo "❌ wget nie jest zainstalowany."; exit 1; }
+command -v parallel >/dev/null 2>&1 || { echo "❌ parallel nie jest zainstalowany."; exit 1; }
 
-# Funkcja czyszcząca wpis domeny (usuwa https://, http://, końcowe /)
+# Czyszczenie domen
 oczysc_domena() {
     local domena="$1"
     domena="${domena#https://}"
@@ -78,72 +36,67 @@ oczysc_domena() {
     echo "$domena"
 }
 
-# Czytanie i czyszczenie listy domen
+# Czytanie listy
 DOMENY=()
 while IFS= read -r linia; do
     [ -z "$linia" ] && continue
-    domena=$(oczysc_domena "$linia")
-    DOMENY+=("$domena")
+    DOMENY+=("$(oczysc_domena "$linia")")
 done < "$PLIK_LISTA"
 
-# Pobieranie stron równolegle
-printf "%s\n" "${DOMENY[@]}" | parallel --env KATALOG_BACKUPU --env NIEUDANE --env GLOBALNY_LOG --env KATALOG_GLOWNY -j "$MAX_PROCESSES" --colsep ' ' '
+# Pobieranie
+printf "%s\n" "${DOMENY[@]}" | parallel --env KATALOG_BACKUPU --env GLOBALNY_LOG --env NIEUDANE -j "$MAX_PROCESSES" '
     domena={};
     if [[ -z "$domena" || ! "$domena" =~ ^[a-zA-Z0-9.-]+$ ]]; then
-        echo "⚠️ Pominięto nieprawidłowy wpis: $domena" | tee -a "$GLOBALNY_LOG"
+        echo "⚠️ Pominięto: '$domena'" | tee -a "$GLOBALNY_LOG"
         exit 0
     fi
 
     echo "--------------------------------------------------" | tee -a "$GLOBALNY_LOG"
-    echo "Pobieranie strony: $domena" | tee -a "$GLOBALNY_LOG"
+    echo "Pobieranie: $domena" | tee -a "$GLOBALNY_LOG"
     echo "--------------------------------------------------" | tee -a "$GLOBALNY_LOG"
 
-    NAZWA_FOLDERU="Strona_${domena//./_}"
-    FOLDER_STRONY="${KATALOG_BACKUPU}/${NAZWA_FOLDERU}"
-    LOGFILE="${FOLDER_STRONY}.log"
-
-    mkdir -p "$FOLDER_STRONY"
+    FOLDER="Strona_${domena//./_}"
+    KATALOG="${KATALOG_BACKUPU}/${FOLDER}"
+    LOG="${KATALOG}.log"
+    mkdir -p "$KATALOG"
 
     {
         wget \
-            --continue \
-            --no-clobber \
-            --show-progress \
-            --timeout=30 \
-            --directory-prefix="$FOLDER_STRONY" \
-            --adjust-extension \
-            --convert-links \
             --mirror \
-            --no-parent \
+            --convert-links \
+            --adjust-extension \
             --page-requisites \
-            --trust-server-names \
+            --no-parent \
+            --timeout=5 \
+            --tries=2 \
+            --wait=0.5 \
+            --limit-rate=2m \
+            --directory-prefix="$KATALOG" \
             "https://${domena}"
-    } 2>&1 | tee "$LOGFILE"
+    } 2>&1 | tee "$LOG"
 
-    WGET_EXIT_CODE=${PIPESTATUS[0]}
+    EXIT_CODE=${PIPESTATUS[0]}
 
-    if [ "$WGET_EXIT_CODE" -eq 0 ]; then
-        echo "✅ Sukces: $domena" | tee -a "$GLOBALNY_LOG"
+    if [ "$EXIT_CODE" -eq 0 ]; then
+        echo "✅ OK: $domena" | tee -a "$GLOBALNY_LOG"
     else
         echo "❌ Błąd: $domena" | tee -a "$GLOBALNY_LOG"
         echo "$domena" >> "$NIEUDANE"
     fi
 '
 
-# Tworzenie archiwum tar.gz
+# Tworzenie archiwum
 echo "--------------------------------------------------" | tee -a "$GLOBALNY_LOG"
-echo "Tworzenie archiwum tar.gz..." | tee -a "$GLOBALNY_LOG"
+echo "Tworzenie archiwum..." | tee -a "$GLOBALNY_LOG"
 cd "$KATALOG_GLOWNY" || exit 1
-TAR_FILE="${NAZWA_BACKUP}_${DATA}_$(date +%H%M%S).tar.gz"
+TAR_FILE="Backup_${DATA}_$(date +%H%M%S).tar.gz"
 tar -czf "$TAR_FILE" "$(basename "$KATALOG_BACKUPU")"
-
-echo "📦 Utworzono archiwum: $PWD/$TAR_FILE" | tee -a "$GLOBALNY_LOG"
-echo "--------------------------------------------------" | tee -a "$GLOBALNY_LOG"
+echo "📦 Utworzono: $PWD/$TAR_FILE" | tee -a "$GLOBALNY_LOG"
 
 # Podsumowanie
 if [ -s "$NIEUDANE" ]; then
-    echo "❗ Wystąpiły błędy podczas pobierania następujących stron:" | tee -a "$GLOBALNY_LOG"
+    echo "❗ Problemy z domenami:" | tee -a "$GLOBALNY_LOG"
     cat "$NIEUDANE" | tee -a "$GLOBALNY_LOG"
 else
-    echo "🎉 Wszystkie strony zostały pobrane pomyślnie!" | tee -a "$GLOBALNY_LOG"
+    echo "🎉 Wszystkie domeny pobrane poprawnie!" | tee -a "$GLOBALNY_LOG"
 fi
