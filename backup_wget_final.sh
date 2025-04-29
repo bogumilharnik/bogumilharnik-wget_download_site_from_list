@@ -62,7 +62,7 @@ printf "%s\n" "${DOMENY[@]}" | parallel --env KATALOG_BACKUPU --env GLOBALNY_LOG
 
 	# Poprawne wyciąganie głównej domeny
 	if [[ -n "$domena" ]]; then
-		ROOT_DOMENA=$(awk -F. '{if (NF>1) printf "%s.%s", $(NF-1), $NF; else print $0}' <<< "$domena")
+		ROOT_DOMENA=$(echo "$domena" | awk -F. '{if (NF>1) printf "%s.%s", $(NF-1), $NF; else print $0}')
 	else
 		ROOT_DOMENA="$domena"
 	fi
