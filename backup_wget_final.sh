@@ -53,7 +53,15 @@ oczysc_domena() {
 # Czytanie listy domen i oczyszczanie
 DOMENY=()
 while IFS= read -r linia; do
-    [ -z "$linia" ] && continue
+    # Usuwanie ukrytych znaków np. \r (Windows), spacji z początku/końca
+    linia=$(echo "$linia" | tr -d '\r' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+
+    # Pominięcie pustych lub nieprawidłowych linii
+    if [[ -z "$linia" || ! "$linia" =~ ^[a-zA-Z0-9.-]+$ ]]; then
+        continue
+    fi
+
+    # Oczyszczenie domeny
     domena=$(oczysc_domena "$linia")
     DOMENY+=("$domena")
 done < "$LISTA_DOMEN"
