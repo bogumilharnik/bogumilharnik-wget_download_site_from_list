@@ -1,1 +1,1 @@
-# bogumilharnik-wget_download_site_from_list
+# Skrypt pobierający mirror strony WWW- z podaniem parametrów katalogu domowego, nazwy backupu oraz pliku z zawartością domen
