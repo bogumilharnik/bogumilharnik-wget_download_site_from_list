@@ -115,14 +115,15 @@ printf "%s\n" "${DOMENY[@]}" | parallel --env KATALOG_BACKUPU --env NIEUDANE --e
             -vv \
             -w \
             -f0 \
-            -r9999 \
+            -r999999 \
             -c32 \
             --connection-per-second=10 \
             --disable-security-limits \
             -k \
             -N1 \
             -s0 \
-            -z
+            -z \
+            --update
     } 2>&1 | tee "$LOGFILE"
 
     HTTRACK_EXIT_CODE=${PIPESTATUS[0]}
